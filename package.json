@@ -1,0 +1,15 @@
+{
+  "name": "purepackage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Issue-driven cloud builder for AI Studio ZIP apps (build exe & apk via GitHub Actions)",
+  "scripts": {
+    "build:from-zip": "node scripts/build-from-zip.cjs"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}
