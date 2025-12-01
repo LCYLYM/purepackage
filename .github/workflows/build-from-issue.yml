@@ -84,6 +84,75 @@ jobs:
           path: hostapp/dist-electron/*.exe
           if-no-files-found: error
 
+  build-android:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.issue.labels.*.name, 'built')"
+    permissions:
+      issues: write
+      contents: write
+    steps:
+      - name: Checkout purepackage
+        uses: actions/checkout@v4
+
+      - name: Parse zip link from issue body
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            // Match GitHub user-attachments URL (both /assets/ and /files/) that ends with .zip
+            const re = /(https:\/\/github\.com\/user-attachments\/(?:assets|files)\/[^\s)]+\.zip)/i;
+            const m = body.match(re);
+            if (!m) {
+              core.setFailed('No GitHub .zip attachment URL found in issue body. Please upload a .zip file and keep the default link format.');
+              return;
+            }
+            const url = m[1];
+            core.info('Detected attachment url: ' + url);
+            core.setOutput('zip_url', url);
+
+      - name: Download zip attachment
+        run: |
+          mkdir -p workspace
+          url="${{ steps.parse.outputs.zip_url }}"
+          echo "Downloading $url"
+          curl -L "$url" -o workspace/source.zip
+          ls -lh workspace
+
+      - name: Clone aistudioformove
+        run: |
+          git clone --depth 1 https://github.com/LCYLYM/aistudioformove.git hostapp
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd hostapp
+          npm install
+
+      - name: Copy ZIP into host public
+        run: |
+          mkdir -p hostapp/public
+          cp workspace/source.zip hostapp/public/embedded-app.zip
+
+      - name: Build Android APK
+        env:
+          VITE_PACKAGE_MODE: 'embedded'
+          VITE_EMBED_ZIP_URL: 'embedded-app.zip'
+        run: |
+          cd hostapp
+          npm run build:android
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: hostapp/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
       - name: Comment build result
         if: always()
         uses: actions/github-script@v7
@@ -96,7 +165,17 @@ jobs:
               owner: repo.owner,
               repo: repo.repo,
               issue_number: issueNumber,
-              body: `✅ Build completed!\n\n[View workflow run](${runUrl}) to download artifacts (exe).\n\n_APK build coming soon._`,
+              body: [
+                '✅ 构建完成！',
+                '',
+                `➡️ 打开此工作流运行页面下载构建产物：`,
+                `${runUrl}`,
+                '',
+                '- Artifacts: `windows-exe` (Windows 可执行文件)',
+                '- Artifacts: `android-apk` (Android 安装包)',
+                '',
+                '在该运行页面的 “Artifacts” 区块中，点击对应名称即可下载。',
+              ].join('\n'),
             });
             await github.rest.issues.addLabels({
               owner: repo.owner,
