@@ -62,11 +62,16 @@ jobs:
         run: |
           Expand-Archive -Path workspace/source.zip -DestinationPath workspace/extracted -Force
           Get-ChildItem -Recurse workspace/extracted | Select-Object FullName
+          # 将原始 zip 复制到 Host 的 public 目录，打包为内置应用
+          New-Item -ItemType Directory -Force -Path hostapp/public | Out-Null
+          Copy-Item workspace/source.zip hostapp/public/embedded-app.zip -Force
 
       - name: Build Windows exe
         shell: pwsh
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          VITE_PACKAGE_MODE: 'embedded'
+          VITE_EMBED_ZIP_URL: 'embedded-app.zip'
         run: |
           cd hostapp
           npm run build:web
