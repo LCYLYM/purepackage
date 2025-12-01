@@ -55,7 +55,7 @@ jobs:
         shell: pwsh
         run: |
           cd hostapp
-          npm ci
+          npm install
 
       - name: Extract ZIP and prepare build
         shell: pwsh
