@@ -133,6 +133,11 @@ jobs:
           cd hostapp
           npm install
 
+      - name: Ensure Android platform added
+        run: |
+          cd hostapp
+          npx cap add android || echo "android platform already exists"
+
       - name: Copy ZIP into host public
         run: |
           mkdir -p hostapp/public
@@ -160,7 +165,28 @@ jobs:
           script: |
             const issueNumber = context.payload.issue.number;
             const repo = context.repo;
-            const runUrl = `https://github.com/${repo.owner}/${repo.repo}/actions/runs/${context.runId}`;
+            const runId = context.runId;
+            const runUrl = `https://github.com/${repo.owner}/${repo.repo}/actions/runs/${runId}`;
+
+            // List artifacts for this run so we can give direct links
+            const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: repo.owner,
+              repo: repo.repo,
+              run_id: runId,
+              per_page: 100,
+            });
+
+            const findArtifact = (name) => data.artifacts.find(a => a.name === name);
+            const exe = findArtifact('windows-exe');
+            const apk = findArtifact('android-apk');
+
+            const exeUrl = exe
+              ? `https://github.com/${repo.owner}/${repo.repo}/actions/runs/${runId}/artifacts/${exe.id}`
+              : '（未找到 windows-exe 构建产物）';
+            const apkUrl = apk
+              ? `https://github.com/${repo.owner}/${repo.repo}/actions/runs/${runId}/artifacts/${apk.id}`
+              : '（未找到 android-apk 构建产物）';
+
             await github.rest.issues.createComment({
               owner: repo.owner,
               repo: repo.repo,
@@ -168,15 +194,17 @@ jobs:
               body: [
                 '✅ 构建完成！',
                 '',
-                `➡️ 打开此工作流运行页面下载构建产物：`,
-                `${runUrl}`,
+                '➡️ 工作流运行页面：',
+                runUrl,
                 '',
-                '- Artifacts: `windows-exe` (Windows 可执行文件)',
-                '- Artifacts: `android-apk` (Android 安装包)',
+                '⬇️ 构建产物直达链接（需登录 GitHub 才能下载）：',
+                `- Windows EXE: ${exeUrl}`,
+                `- Android APK: ${apkUrl}`,
                 '',
-                '在该运行页面的 “Artifacts” 区块中，点击对应名称即可下载。',
+                '也可以在该运行页面的 “Artifacts” 区块中，点击对应名称下载。',
               ].join('\n'),
             });
+
             await github.rest.issues.addLabels({
               owner: repo.owner,
               repo: repo.repo,
