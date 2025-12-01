@@ -1,4 +1,4 @@
-name: Build from issue
+name: build-from-issue
 
 on:
   issues:
@@ -14,37 +14,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 解析 issue 正文中的 zip 附件链接
+      - name: Parse zip link from issue body
         id: parse
         uses: actions/github-script@v7
         with:
           script: |
             const body = context.payload.issue.body || '';
-            // 兼容两种形式：
-            // 1) 直接 Markdown 链接: [xxx.zip](https://github.com/.../assets/...)
-            // 2) 拖拽上传图片形式: ![xxx.zip](https://github.com/.../assets/...)
+            // Support both markdown link [xxx.zip](...) and image-like link ![xxx.zip](...)
             const re = /!\[[^\]]*?\.zip\]\((https:\/\/github\.com\/[^)]+)\)|\[[^\]]*?\.zip\]\((https:\/\/github\.com\/[^)]+)\)/i;
             const m = body.match(re);
             if (!m) {
-              core.setFailed('在 issue 正文中没有找到 .zip 附件链接，请上传 zip 后重试。');
+              core.setFailed('No .zip link found in issue body. Please upload a zip file and include its link.');
               return;
             }
             const url = m[1] || m[2];
             core.info(`Detected zip url: ${url}`);
             core.setOutput('zip_url', url);
 
-      - name: 下载 zip 附件
+      - name: Download zip attachment
         run: |
           mkdir -p workspace
-          echo "Downloading ${{ steps.parse.outputs.zip_url }}"  
+          echo "Downloading ${{ steps.parse.outputs.zip_url }}"
           curl -L "${{ steps.parse.outputs.zip_url }}" -o workspace/source.zip
 
-      - name: 占位打包步骤（TODO: 构建 exe / apk）
+      - name: Placeholder build step (TODO: build exe / apk)
         run: |
-          echo "[purepackage] TODO: 在这里调用真正的打包脚本，例如构建 exe / apk"  
+          echo "[purepackage] TODO: build exe / apk from workspace/source.zip"
           ls -lh workspace
 
-      - name: 在 issue 中回复并打标签
+      - name: Comment and label issue
         uses: actions/github-script@v7
         with:
           script: |
@@ -54,9 +52,9 @@ jobs:
               owner: repo.owner,
               repo: repo.repo,
               issue_number: issueNumber,
-              body: '✅ 已收到构建请求，zip 已下载到云端 workspace。后续将接入 exe/apk 构建逻辑。',
+              body: '✅ Build request received. Zip has been downloaded to the workflow workspace. TODO: hook real exe/apk build logic.',
             });
-            // 添加 built 标签（幂等），后续如果需要可以据此判断是否已构建
+            // Add "built" label idempotently
             const labels = (context.payload.issue.labels || []).map(l => l.name);
             if (!labels.includes('built')) {
               await github.rest.issues.addLabels({
