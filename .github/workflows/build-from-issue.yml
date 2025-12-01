@@ -21,14 +21,14 @@ jobs:
         with:
           script: |
             const body = context.payload.issue.body || '';
-            // Match GitHub user-attachments URL pattern
-            const re = /https:\/\/github\.com\/user-attachments\/assets\/[a-f0-9-]+/gi;
-            const matches = body.match(re);
-            if (!matches || matches.length === 0) {
-              core.setFailed('No GitHub attachment URL found in issue body. Please upload a .zip file.');
+            // Match GitHub user-attachments URL (both /assets/ and /files/) that ends with .zip
+            const re = /(https:\/\/github\.com\/user-attachments\/(?:assets|files)\/[^\s)]+\.zip)/i;
+            const m = body.match(re);
+            if (!m) {
+              core.setFailed('No GitHub .zip attachment URL found in issue body. Please upload a .zip file and keep the default link format.');
               return;
             }
-            const url = matches[0];
+            const url = m[1];
             core.info('Detected attachment url: ' + url);
             core.setOutput('zip_url', url);
 
