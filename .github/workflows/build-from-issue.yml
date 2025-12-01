@@ -14,20 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 检查标签是否需要构建
-        id: check-labels
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const labels = (context.payload.issue.labels || []).map(l => l.name);
-            const hasBuildZip = labels.includes('build-zip');
-            const hasBuilt = labels.includes('built');
-            const shouldRun = hasBuildZip && !hasBuilt;
-            core.info(`labels = ${labels.join(', ')}, shouldRun = ${shouldRun}`);
-            core.setOutput('should_run', shouldRun ? 'true' : 'false');
-
       - name: 解析 issue 正文中的 zip 附件链接
-        if: steps.check-labels.outputs.should_run == 'true'
         id: parse
         uses: actions/github-script@v7
         with:
@@ -47,20 +34,17 @@ jobs:
             core.setOutput('zip_url', url);
 
       - name: 下载 zip 附件
-        if: steps.check-labels.outputs.should_run == 'true'
         run: |
           mkdir -p workspace
           echo "Downloading ${{ steps.parse.outputs.zip_url }}"  
           curl -L "${{ steps.parse.outputs.zip_url }}" -o workspace/source.zip
 
       - name: 占位打包步骤（TODO: 构建 exe / apk）
-        if: steps.check-labels.outputs.should_run == 'true'
         run: |
           echo "[purepackage] TODO: 在这里调用真正的打包脚本，例如构建 exe / apk"  
           ls -lh workspace
 
       - name: 在 issue 中回复并打标签
-        if: steps.check-labels.outputs.should_run == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -72,7 +56,7 @@ jobs:
               issue_number: issueNumber,
               body: '✅ 已收到构建请求，zip 已下载到云端 workspace。后续将接入 exe/apk 构建逻辑。',
             });
-            // 添加 built 标签，避免重复触发
+            // 添加 built 标签（幂等），后续如果需要可以据此判断是否已构建
             const labels = (context.payload.issue.labels || []).map(l => l.name);
             if (!labels.includes('built')) {
               await github.rest.issues.addLabels({
