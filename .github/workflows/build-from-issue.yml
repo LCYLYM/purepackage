@@ -38,9 +38,7 @@ jobs:
           curl -L "${{ steps.parse.outputs.zip_url }}" -o workspace/source.zip
 
       - name: Placeholder build step (TODO: build exe / apk)
-        run: |
-          echo "[purepackage] TODO: build exe / apk from workspace/source.zip"
-          ls -lh workspace
+        run: echo "[purepackage] TODO: build exe / apk from workspace/source.zip" && ls -lh workspace
 
       - name: Comment and label issue
         uses: actions/github-script@v7
