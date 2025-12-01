@@ -2,16 +2,17 @@ name: build-from-issue
 
 on:
   issues:
-    types: [opened, edited, labeled]
+    types: [opened, edited]
 
 jobs:
-  build-from-issue:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: windows-latest
+    if: "!contains(github.event.issue.labels.*.name, 'built')"
     permissions:
       issues: write
       contents: write
     steps:
-      - name: Checkout
+      - name: Checkout purepackage
         uses: actions/checkout@v4
 
       - name: Parse zip link from issue body
@@ -20,45 +21,81 @@ jobs:
         with:
           script: |
             const body = context.payload.issue.body || '';
-            // Support both markdown link [xxx.zip](...) and image-like link ![xxx.zip](...)
-            const re = /!\[[^\]]*?\.zip\]\((https:\/\/github\.com\/[^)]+)\)|\[[^\]]*?\.zip\]\((https:\/\/github\.com\/[^)]+)\)/i;
-            const m = body.match(re);
-            if (!m) {
-              core.setFailed('No .zip link found in issue body. Please upload a zip file and include its link.');
+            // Match GitHub user-attachments URL pattern
+            const re = /https:\/\/github\.com\/user-attachments\/assets\/[a-f0-9-]+/gi;
+            const matches = body.match(re);
+            if (!matches || matches.length === 0) {
+              core.setFailed('No GitHub attachment URL found in issue body. Please upload a .zip file.');
               return;
             }
-            const url = m[1] || m[2];
-            core.info(`Detected zip url: ${url}`);
+            const url = matches[0];
+            core.info('Detected attachment url: ' + url);
             core.setOutput('zip_url', url);
 
       - name: Download zip attachment
+        shell: pwsh
         run: |
-          mkdir -p workspace
-          echo "Downloading ${{ steps.parse.outputs.zip_url }}"
-          curl -L "${{ steps.parse.outputs.zip_url }}" -o workspace/source.zip
+          New-Item -ItemType Directory -Force -Path workspace
+          $url = "${{ steps.parse.outputs.zip_url }}"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile workspace/source.zip -MaximumRedirection 10
+          Get-ChildItem workspace
 
-      - name: Placeholder build step (TODO: build exe / apk)
-        run: echo "[purepackage] TODO: build exe / apk from workspace/source.zip" && ls -lh workspace
+      - name: Clone aistudioformove
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/LCYLYM/aistudioformove.git hostapp
 
-      - name: Comment and label issue
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          cd hostapp
+          npm ci
+
+      - name: Extract ZIP and prepare build
+        shell: pwsh
+        run: |
+          Expand-Archive -Path workspace/source.zip -DestinationPath workspace/extracted -Force
+          Get-ChildItem -Recurse workspace/extracted | Select-Object FullName
+
+      - name: Build Windows exe
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          cd hostapp
+          npm run build:web
+          npm run build:electron
+
+      - name: Upload exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: hostapp/release/*.exe
+          if-no-files-found: warn
+
+      - name: Comment build result
+        if: always()
         uses: actions/github-script@v7
         with:
           script: |
             const issueNumber = context.payload.issue.number;
             const repo = context.repo;
+            const runUrl = `https://github.com/${repo.owner}/${repo.repo}/actions/runs/${context.runId}`;
             await github.rest.issues.createComment({
               owner: repo.owner,
               repo: repo.repo,
               issue_number: issueNumber,
-              body: '✅ Build request received. Zip has been downloaded to the workflow workspace. TODO: hook real exe/apk build logic.',
+              body: `✅ Build completed!\n\n[View workflow run](${runUrl}) to download artifacts (exe).\n\n_APK build coming soon._`,
             });
-            // Add "built" label idempotently
-            const labels = (context.payload.issue.labels || []).map(l => l.name);
-            if (!labels.includes('built')) {
-              await github.rest.issues.addLabels({
-                owner: repo.owner,
-                repo: repo.repo,
-                issue_number: issueNumber,
-                labels: ['built'],
-              });
-            }
+            await github.rest.issues.addLabels({
+              owner: repo.owner,
+              repo: repo.repo,
+              issue_number: issueNumber,
+              labels: ['built'],
+            });
